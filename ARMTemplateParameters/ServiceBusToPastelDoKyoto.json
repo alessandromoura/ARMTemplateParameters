@@ -1,0 +1,233 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "twilio_1_Connection_Name": {
+      "type": "string",
+      "defaultValue": "twilio"
+    },
+    "twilio_1_Connection_DisplayName": {
+      "type": "string",
+      "defaultValue": "twilio"
+    },
+    "twilio_1_sid": {
+      "type": "securestring",
+      "metadata": {
+        "description": "Twilio Account Id"
+      }
+    },
+    "twilio_1_token": {
+      "type": "securestring",
+      "metadata": {
+        "description": "Twilio Access Token"
+      }
+    },
+    "servicebus_1_Connection_Name": {
+      "type": "string",
+      "defaultValue": "servicebus"
+    },
+    "servicebus_1_Connection_DisplayName": {
+      "type": "string",
+      "defaultValue": "servicebus"
+    },
+    "servicebus_1_connectionString": {
+      "type": "securestring",
+      "metadata": {
+        "description": "Azure Service Bus Connection String"
+      }
+    },
+    "LogicAppLocation": {
+      "type": "string",
+      "minLength": 1,
+      "allowedValues": [
+        "[resourceGroup().location]",
+        "eastasia",
+        "southeastasia",
+        "centralus",
+        "eastus",
+        "eastus2",
+        "westus",
+        "northcentralus",
+        "southcentralus",
+        "northeurope",
+        "westeurope",
+        "japanwest",
+        "japaneast",
+        "brazilsouth",
+        "australiaeast",
+        "australiasoutheast",
+        "southindia",
+        "centralindia",
+        "westindia",
+        "canadacentral",
+        "canadaeast",
+        "uksouth",
+        "ukwest",
+        "westcentralus",
+        "westus2"
+      ],
+      "defaultValue": "australiasoutheast"
+    }
+  },
+  "variables": {},
+  "resources": [
+    {
+      "properties": {
+        "state": "Enabled",
+        "definition": {
+          "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+          "actions": {
+            "Abandon_the_message_in_a_topic_subscription": {
+              "type": "ApiConnection",
+              "inputs": {
+                "host": {
+                  "connection": {
+                    "name": "@parameters('$connections')['servicebus']['connectionId']"
+                  }
+                },
+                "method": "post",
+                "path": "/@{encodeURIComponent(encodeURIComponent('messagebox'))}/subscriptions/@{encodeURIComponent('ToPastelDoKyoto')}/messages/abandon",
+                "queries": {
+                  "lockToken": "@triggerBody()?['LockToken']",
+                  "subscriptionType": "Main"
+                }
+              },
+              "runAfter": {
+                "Send_Text_Message_(SMS)": [
+                  "Failed",
+                  "TimedOut"
+                ]
+              }
+            },
+            "Complete_the_message_in_a_topic_subscription": {
+              "type": "ApiConnection",
+              "inputs": {
+                "host": {
+                  "connection": {
+                    "name": "@parameters('$connections')['servicebus']['connectionId']"
+                  }
+                },
+                "method": "delete",
+                "path": "/@{encodeURIComponent(encodeURIComponent('messagebox'))}/subscriptions/@{encodeURIComponent('ToPastelDoKyoto')}/messages/complete",
+                "queries": {
+                  "lockToken": "@triggerBody()?['LockToken']",
+                  "subscriptionType": "Main"
+                }
+              },
+              "runAfter": {
+                "Send_Text_Message_(SMS)": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Send_Text_Message_(SMS)": {
+              "type": "ApiConnection",
+              "inputs": {
+                "host": {
+                  "connection": {
+                    "name": "@parameters('$connections')['twilio']['connectionId']"
+                  }
+                },
+                "method": "post",
+                "body": {
+                  "from": "+12062025671",
+                  "to": "@{triggerBody()?['Properties']?['Phone']}",
+                  "body": "Order Request of @{triggerBody()?['Properties']?['Quantity']} meal @{triggerBody()?['Properties']?['Meal']} for @{triggerBody()?['Properties']?['Name']}"
+                },
+                "path": "/Messages.json"
+              },
+              "runAfter": {}
+            }
+          },
+          "parameters": {
+            "$connections": {
+              "defaultValue": {},
+              "type": "Object"
+            }
+          },
+          "triggers": {
+            "When_a_message_is_received_in_a_topic_subscription_(peek-lock)": {
+              "type": "ApiConnection",
+              "inputs": {
+                "host": {
+                  "connection": {
+                    "name": "@parameters('$connections')['servicebus']['connectionId']"
+                  }
+                },
+                "method": "get",
+                "path": "/@{encodeURIComponent(encodeURIComponent('messagebox'))}/subscriptions/@{encodeURIComponent('ToPastelDoKyoto')}/messages/head/peek",
+                "queries": {
+                  "subscriptionType": "Main",
+                  "sessionId": "None"
+                }
+              },
+              "recurrence": {
+                "frequency": "Minute",
+                "interval": 1
+              }
+            }
+          },
+          "contentVersion": "1.0.0.0",
+          "outputs": {}
+        },
+        "parameters": {
+          "$connections": {
+            "value": {
+              "servicebus": {
+                "id": "[concat(subscription().id, '/providers/Microsoft.Web/locations/', 'australiasoutheast', '/managedApis/', 'servicebus')]",
+                "connectionId": "[resourceId('Microsoft.Web/connections', parameters('servicebus_1_Connection_Name'))]",
+                "connectionName": "[parameters('servicebus_1_Connection_Name')]"
+              },
+              "twilio": {
+                "id": "[concat(subscription().id, '/providers/Microsoft.Web/locations/', 'australiasoutheast', '/managedApis/', 'twilio')]",
+                "connectionId": "[resourceId('Microsoft.Web/connections', parameters('twilio_1_Connection_Name'))]",
+                "connectionName": "[parameters('twilio_1_Connection_Name')]"
+              }
+            }
+          }
+        }
+      },
+      "name": "ServiceBusToPastelDoKyoto",
+      "type": "Microsoft.Logic/workflows",
+      "location": "[parameters('LogicAppLocation')]",
+      "tags": {},
+      "apiVersion": "2016-06-01",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/connections', parameters('servicebus_1_Connection_Name'))]",
+        "[resourceId('Microsoft.Web/connections', parameters('twilio_1_Connection_Name'))]"
+      ]
+    },
+    {
+      "type": "MICROSOFT.WEB/CONNECTIONS",
+      "apiVersion": "2016-06-01",
+      "name": "[parameters('twilio_1_Connection_Name')]",
+      "location": "australiasoutheast",
+      "properties": {
+        "api": {
+          "id": "[concat(subscription().id, '/providers/Microsoft.Web/locations/', 'australiasoutheast', '/managedApis/', 'twilio')]"
+        },
+        "displayName": "[parameters('twilio_1_Connection_DisplayName')]",
+        "parameterValues": {
+          "sid": "[parameters('twilio_1_sid')]",
+          "token": "[parameters('twilio_1_token')]"
+        }
+      }
+    },
+    {
+      "type": "MICROSOFT.WEB/CONNECTIONS",
+      "apiVersion": "2016-06-01",
+      "name": "[parameters('servicebus_1_Connection_Name')]",
+      "location": "australiasoutheast",
+      "properties": {
+        "api": {
+          "id": "[concat(subscription().id, '/providers/Microsoft.Web/locations/', 'australiasoutheast', '/managedApis/', 'servicebus')]"
+        },
+        "displayName": "[parameters('servicebus_1_Connection_DisplayName')]",
+        "parameterValues": {
+          "connectionString": "[parameters('servicebus_1_connectionString')]"
+        }
+      }
+    }
+  ],
+  "outputs": {}
+}
